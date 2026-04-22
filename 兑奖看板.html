@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>🎁 打卡兑奖 · 共享看板</title>
+  <style>
+    /* 样式保持不变，和之前完全一样 */
+    * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', 'Helvetica Neue', sans-serif; }
+    body { background: #f5f9f2; margin: 0; padding: 16px; color: #1e3a1e; min-height: 100vh; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.8rem; margin: 0 0 8px; }
+    .subtitle { color: #4a6b4a; margin-bottom: 20px; padding: 10px 16px; background: #e9f3e5; border-radius: 20px; }
+    .card { background: white; border-radius: 28px; padding: 20px; box-shadow: 0 6px 14px rgba(0,20,0,0.04); margin-bottom: 20px; border: 1px solid #d4e2ce; }
+    .prize-grid { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+    .prize-card { border: 1px solid #c3dbc0; border-radius: 20px; padding: 12px; width: 120px; text-align: center; background: #fafdf8; cursor: pointer; transition: 0.1s; }
+    .prize-card:active { background: #d9e8d3; }
+    .prize-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: 16px; margin-bottom: 8px; border: 1px solid #ddd; }
+    .selected-chips { margin: 12px 0; }
+    .chip { display: inline-block; background: #e3f0e1; border-radius: 30px; padding: 8px 16px; margin: 4px 6px 4px 0; border: 1px solid #aacba7; }
+    .chip button { background: none; border: none; margin-left: 8px; font-weight: bold; color: #5a7a55; cursor: pointer; }
+    input, select, button { padding: 12px 16px; border-radius: 40px; border: 1.5px solid #cbdcc2; font-size: 16px; background: white; }
+    button { background: #4a7c4a; color: white; border: none; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #e3efde; color: #1f411f; border: 1px solid #a7bf9f; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 6px; border-bottom: 1px solid #e2ecde; text-align: left; }
+    .badge { background: #d9e8d3; padding: 2px 12px; border-radius: 20px; }
+    .credit-big { font-weight: bold; font-size: 1.3rem; }
+    .warning { color: #b85c5c; }
+    .hidden { display: none; }
+    .loading { text-align: center; padding: 20px; color: #5a7a55; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- 登录/选择昵称界面 -->
+  <div id="loginCard" class="card">
+    <h2>👋 输入昵称开始选择</h2>
+    <p style="color:#666;">所有人共用看板，实时更新，请勿删除他人选择</p>
+    <div class="input-group" style="display:flex; gap:10px; margin-top:20px;">
+      <input type="text" id="nicknameInput" placeholder="你的昵称" style="flex:2;">
+      <input type="password" id="adminPasswordInput" placeholder="管理员密码" style="flex:1;">
+      <button id="enterBtn">进入</button>
+    </div>
+    <p style="font-size:0.8rem; margin-top:12px;">✨ 幸运儿: Emma, Cora, 阿璃, 脆丁壳, 酸奶碗, 阿力, 阿党, 小鹿, 鸦</p>
+    <div id="loginError" class="warning"></div>
+  </div>
+
+  <!-- 普通用户选择界面 -->
+  <div id="userPanel" class="hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>👤 <span id="displayName"></span> 的奖品</h2>
+      <button id="logoutBtn" class="secondary">退出</button>
+    </div>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between;">
+        <span>💰 总额度: <span id="totalCredit" class="credit-big">0</span> 元</span>
+        <span>📊 已用: <span id="usedCredit">0</span> 元</span>
+        <span>✨ 剩余: <span id="remainingCredit" class="credit-big">0</span> 元</span>
+      </div>
+      <div id="mySelections" class="selected-chips"></div>
+    </div>
+    <div class="card">
+      <h3>🎁 奖品池（点击添加）</h3>
+      <div id="prizeList" class="prize-grid"></div>
+    </div>
+    <div class="card">
+      <h3>📋 当前所有人的选择</h3>
+      <div id="globalSummary"></div>
+    </div>
+  </div>
+
+  <!-- 管理员汇总界面 -->
+  <div id="adminPanel" class="hidden">
+    <div style="display:flex; justify-content:space-between;">
+      <h2>🔐 管理员看板</h2>
+      <button id="adminLogoutBtn" class="secondary">退出</button>
+    </div>
+    <div class="card">
+      <h3>奖品库存统计</h3>
+      <div id="inventoryStats"></div>
+      <button id="refreshAdminBtn" class="secondary" style="margin-top:12px;">刷新</button>
+    </div>
+    <div class="card">
+      <h3>明细表</h3>
+      <div style="overflow-x:auto;">
+        <table id="adminTable">
+          <thead><tr><th>昵称</th><th>总额度</th><th>已选奖品</th><th>总价</th><th>剩余</th></tr></thead>
+          <tbody id="adminTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.bmobcloud.com/sdk/2.3.0/Bmob-2.3.0.min.js"></script>
+<script>
+  (function() {
+    // ================== 配置区（替换为你自己的 Bmob 密钥）==================
+    const BMOB_APP_ID = 'c5f5ab55b083c6b10d2f0aaa495e9730';
+    const BMOB_REST_API_KEY = 'f308d5efe28841dc22664c8d34e77e9e';
+    const BMOB_SECRET_KEY = '37435401758e5528';  // 必须保密，但必须填
+    
+    const ADMIN_PASSWORD = 'szy';  // 可修改
+
+    // 初始化 Bmob
+    Bmob.initialize(BMOB_APP_ID, BMOB_REST_API_KEY, BMOB_SECRET_KEY);
+
+    // 奖品库（图片与HTML同目录）
+    const prizeCatalog = [
+      { id: '1', name: "多肉", price: 10, img: "duorou.jpeg" },
+      { id: '2', name: "软头书法笔", price: 10, img: "ruantoubi.jpeg" },
+      { id: '3', name: "便签(可爱)", price: 10, img: "bianqian.jpeg" },
+      { id: '4', name: "幸福日记本", price: 20, img: "xingfurijiben.jpeg" },
+      { id: '5', name: "曼陀罗涂色本", price: 20, img: "mantuoluo.jpeg" },
+      { id: '6', name: "拼图", price: 20, img: "pintu.jpeg" },
+      { id: '7', name: "小鸟玩偶", price: 30, img: "xiaoniao.jpeg" },
+      { id: '8', name: "陶瓷杯", price: 30, img: "taocibei.jpeg" },
+      { id: '9', name: "护手霜", price: 30, img: "hushoushuang.jpeg" }
+    ];
+
+    // 额度数据
+    const week1 = new Set(["阿党","兮兮","Coco","安琳","Cora","若若","鸦","小比","42","Amy","鼠","丢瓜","小然","Radley","包的！","莫莫","晚上好","胖胖","肥皂","小鹿","捡垃圾的","脆丁壳","苹果","杜其琛","台球","き","Emma","水水","琼琼","修普诺斯","大本","小苏"]);
+    const week2 = new Set(["阿党","兮兮","Coco","安琳","Cora","若若","鸦","小比","Amy","肥皂","小鹿","捡垃圾的","脆丁壳","苹果","杜其琛","台球","き","Emma","水水","琼琼","修普诺斯","大本"]);
+    const lucky = new Set(["Emma","Cora","阿璃","脆丁壳","酸奶碗","阿力","阿党","小鹿","鸦"]);
+
+    function getCredit(name) {
+      let credit = 0;
+      if (week1.has(name)) credit += 10;
+      if (week2.has(name)) credit += 10;
+      if (lucky.has(name)) credit += 10;
+      return credit;
+    }
+
+    let currentUser = null;
+    let globalSelections = {};
+
+    // Bmob 数据表名（会自动创建）
+    const SelectionTable = Bmob.Object.extend('PrizeSelections');
+
+    // 从 Bmob 加载所有数据
+    async function loadData() {
+      const query = new Bmob.Query(SelectionTable);
+      query.limit(1000);
+      const results = await query.find();
+      globalSelections = {};
+      results.forEach(record => {
+        const name = record.get('userName');
+        const selections = record.get('selections') || [];
+        globalSelections[name] = selections;
+      });
+    }
+
+    // 保存当前用户的选择
+    async function saveUserSelection(name, selections) {
+      const query = new Bmob.Query(SelectionTable);
+      query.equalTo('userName', '==', name);
+      const record = await query.first();
+      if (record) {
+        record.set('selections', selections);
+        return record.save();
+      } else {
+        const newRecord = new SelectionTable();
+        newRecord.set('userName', name);
+        newRecord.set('selections', selections);
+        return newRecord.save();
+      }
+    }
+
+    // UI 渲染函数（与之前基本相同，略作调整）
+    function renderPrizeGrid() {
+      const container = document.getElementById('prizeList');
+      container.innerHTML = '';
+      prizeCatalog.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'prize-card';
+        card.innerHTML = `<img src="${p.img}" onerror="this.style.display='none'"><div><strong>${p.name}</strong><br>${p.price}元</div>`;
+        card.addEventListener('click', async () => {
+          if (!currentUser) return;
+          const name = currentUser.name;
+          const credit = getCredit(name);
+          const currentSelections = globalSelections[name] || [];
+          const currentTotal = currentSelections.reduce((s, i) => s + i.price, 0);
+          if (currentTotal + p.price > credit) {
+            alert(`额度不足！当前已选 ${currentTotal} 元，总额 ${credit} 元`);
+            return;
+          }
+          if (!globalSelections[name]) globalSelections[name] = [];
+          globalSelections[name].push({ id: p.id, name: p.name, price: p.price });
+          await saveUserSelection(name, globalSelections[name]);
+          await loadData(); // 重新拉取最新全局数据
+          updateAllUI();
+        });
+        container.appendChild(card);
+      });
+    }
+
+    function updateUserUI() {
+      if (!currentUser || currentUser.isAdmin) return;
+      const name = currentUser.name;
+      const credit = getCredit(name);
+      const selections = globalSelections[name] || [];
+      const used = selections.reduce((s, i) => s + i.price, 0);
+      
+      document.getElementById('displayName').innerText = name;
+      document.getElementById('totalCredit').innerText = credit;
+      document.getElementById('usedCredit').innerText = used;
+      document.getElementById('remainingCredit').innerText = credit - used;
+      
+      const chipsDiv = document.getElementById('mySelections');
+      chipsDiv.innerHTML = selections.map((p, idx) => 
+        `<span class="chip">${p.name} (${p.price}元) <button data-index="${idx}" class="remove-btn">✕</button></span>`
+      ).join('') || '<span style="color:#888;">暂未选择</span>';
+      
+      document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const idx = e.target.dataset.index;
+          if (idx !== undefined) {
+            globalSelections[name].splice(idx, 1);
+            await saveUserSelection(name, globalSelections[name]);
+            await loadData();
+            updateAllUI();
+          }
+        });
+      });
+    }
+
+    function updateGlobalSummary() {
+      const div = document.getElementById('globalSummary');
+      const allNames = Object.keys(globalSelections);
+      if (allNames.length === 0) {
+        div.innerHTML = '<p>暂无选择记录</p>';
+        return;
+      }
+      let html = '<table style="width:100%"><tr><th>昵称</th><th>已选</th></tr>';
+      allNames.sort().forEach(name => {
+        const items = globalSelections[name].map(p => `${p.name}(${p.price})`).join('、');
+        html += `<tr><td>${name}</td><td>${items || '—'}</td></tr>`;
+      });
+      html += '</table>';
+      div.innerHTML = html;
+    }
+
+    function updateAdminPanel() {
+      const tbody = document.getElementById('adminTableBody');
+      const allNames = new Set([...week1, ...week2, ...lucky, ...Object.keys(globalSelections)]);
+      const nameList = Array.from(allNames).sort((a,b) => a.localeCompare(b, 'zh-CN'));
+      
+      let html = '';
+      const inventory = {10:0, 20:0, 30:0};
+      
+      nameList.forEach(name => {
+        const credit = getCredit(name);
+        const selections = globalSelections[name] || [];
+        const total = selections.reduce((s, p) => s + p.price, 0);
+        const remaining = credit - total;
+        const itemsStr = selections.map(p => `${p.name}(${p.price})`).join('、') || '—';
+        selections.forEach(p => inventory[p.price]++);
+        html += `<tr><td>${name}</td><td>${credit}</td><td>${itemsStr}</td><td>${total}</td><td style="color:${remaining<0?'red':'green'}">${remaining}</td></tr>`;
+      });
+      tbody.innerHTML = html;
+      
+      document.getElementById('inventoryStats').innerHTML = `
+        <span class="badge">10元档: ${inventory[10] || 0}</span>
+        <span class="badge">20元档: ${inventory[20] || 0}</span>
+        <span class="badge">30元档: ${inventory[30] || 0}</span>
+      `;
+    }
+
+    function updateAllUI() {
+      if (currentUser?.isAdmin) {
+        updateAdminPanel();
+      } else if (currentUser) {
+        updateUserUI();
+        updateGlobalSummary();
+      }
+    }
+
+    // 登录逻辑
+    async function handleEnter() {
+      const nickname = document.getElementById('nicknameInput').value.trim();
+      const pwd = document.getElementById('adminPasswordInput').value;
+      
+      if (!nickname) {
+        document.getElementById('loginError').innerText = '请输入昵称';
+        return;
+      }
+      
+      // 显示加载状态（可加，简单处理）
+      document.getElementById('enterBtn').disabled = true;
+      document.getElementById('enterBtn').innerText = '加载中...';
+      
+      try {
+        await loadData();
+        
+        if (pwd === ADMIN_PASSWORD) {
+          currentUser = { name: '管理员', isAdmin: true };
+          document.getElementById('loginCard').classList.add('hidden');
+          document.getElementById('adminPanel').classList.remove('hidden');
+          updateAdminPanel();
+        } else {
+          const credit = getCredit(nickname);
+          if (credit === 0 && !confirm(`昵称"${nickname}"没有打卡记录，额度为0。确定继续吗？`)) {
+            document.getElementById('enterBtn').disabled = false;
+            document.getElementById('enterBtn').innerText = '进入';
+            return;
+          }
+          
+          currentUser = { name: nickname, isAdmin: false };
+          document.getElementById('loginCard').classList.add('hidden');
+          document.getElementById('userPanel').classList.remove('hidden');
+          renderPrizeGrid();
+          updateAllUI();
+        }
+      } catch (error) {
+        console.error(error);
+        alert('网络错误，请重试。可能是密钥配置有误。');
+      } finally {
+        document.getElementById('enterBtn').disabled = false;
+        document.getElementById('enterBtn').innerText = '进入';
+      }
+    }
+
+    function logout() {
+      currentUser = null;
+      document.getElementById('loginCard').classList.remove('hidden');
+      document.getElementById('userPanel').classList.add('hidden');
+      document.getElementById('adminPanel').classList.add('hidden');
+      document.getElementById('nicknameInput').value = '';
+      document.getElementById('adminPasswordInput').value = '';
+    }
+
+    // 事件绑定
+    document.getElementById('enterBtn').addEventListener('click', handleEnter);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('adminLogoutBtn').addEventListener('click', logout);
+    document.getElementById('refreshAdminBtn').addEventListener('click', async () => {
+      await loadData();
+      updateAdminPanel();
+    });
+    
+    document.getElementById('nicknameInput').addEventListener('keypress', e => { if(e.key==='Enter') handleEnter(); });
+    document.getElementById('adminPasswordInput').addEventListener('keypress', e => { if(e.key==='Enter') handleEnter(); });
+  })();
+</script>
+</body>
+</html>
